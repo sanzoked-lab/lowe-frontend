@@ -4,11 +4,19 @@ const apiBaseInput = document.querySelector("#api-base-url");
 const backendStatus = document.querySelector("#backend-status");
 
 let apiBase = localStorage.getItem("lowe-api-base") || import.meta.env.VITE_API_BASE_URL || DEFAULT_API_BASE;
-apiBaseInput.value = apiBase;
+if (apiBaseInput) apiBaseInput.value = apiBase;
 
 const setStatus = (message, isOk = true) => {
+  if (!backendStatus) return;
   backendStatus.textContent = message;
   backendStatus.style.color = isOk ? "#166534" : "#b42318";
+};
+
+const setButtonLoading = (button, isLoading, defaultLabel = "Submit") => {
+  if (!button) return;
+  button.disabled = isLoading;
+  button.dataset.originalText = button.dataset.originalText || button.textContent || defaultLabel;
+  button.textContent = isLoading ? "Working…" : button.dataset.originalText;
 };
 
 async function fetchJson(url, options = {}) {
@@ -20,10 +28,15 @@ async function fetchJson(url, options = {}) {
     ...options
   });
 
-  const payload = await response.json().catch(() => ({}));
+  let payload = {};
+  try {
+    payload = await response.json();
+  } catch {
+    payload = {};
+  }
 
   if (!response.ok) {
-    const detail = payload?.detail || payload?.error || "Request failed";
+    const detail = payload?.detail || payload?.error || payload?.message || "Request failed";
     throw new Error(detail);
   }
 
@@ -50,13 +63,24 @@ function formatResult(value) {
   return String(value ?? "No result");
 }
 
+function getFirstDefinedValue(result, keys = []) {
+  if (!result || typeof result !== "object") return result;
+
+  for (const key of keys) {
+    const value = result[key];
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+
+  return result;
+}
+
 function setOutput(id, value) {
   const el = document.querySelector(`#${id}`);
   if (!el) return;
   el.textContent = formatResult(value);
 }
 
-document.querySelector("#api-base-form").addEventListener("submit", (event) => {
+document.querySelector("#api-base-form")?.addEventListener("submit", (event) => {
   event.preventDefault();
   const nextBase = apiBaseInput.value.trim();
   if (!nextBase) {
@@ -70,7 +94,7 @@ document.querySelector("#api-base-form").addEventListener("submit", (event) => {
   checkBackend();
 });
 
-document.querySelector("#translate-form").addEventListener("submit", async (event) => {
+document.querySelector("#translate-form")?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const formData = new FormData(event.currentTarget);
   const payload = {
@@ -79,18 +103,24 @@ document.querySelector("#translate-form").addEventListener("submit", async (even
     myLanguage: formData.get("myLanguage")
   };
 
+  const button = event.currentTarget.querySelector("button[type='submit']");
+  setButtonLoading(button, true, "Translate");
+
   try {
     const result = await fetchJson(`${apiBase}/translate`, {
       method: "POST",
       body: JSON.stringify(payload)
     });
-    setOutput("translate-output", result.translation || result.translated || result);
+    const output = getFirstDefinedValue(result, ["translation", "translated", "text", "message"]);
+    setOutput("translate-output", output ?? "No translation returned.");
   } catch (error) {
     setOutput("translate-output", `Error: ${error.message}`);
+  } finally {
+    setButtonLoading(button, false, "Translate");
   }
 });
 
-document.querySelector("#draft-form").addEventListener("submit", async (event) => {
+document.querySelector("#draft-form")?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const formData = new FormData(event.currentTarget);
   const payload = {
@@ -98,18 +128,24 @@ document.querySelector("#draft-form").addEventListener("submit", async (event) =
     myLanguage: formData.get("myLanguage")
   };
 
+  const button = event.currentTarget.querySelector("button[type='submit']");
+  setButtonLoading(button, true, "Draft");
+
   try {
     const result = await fetchJson(`${apiBase}/draft`, {
       method: "POST",
       body: JSON.stringify(payload)
     });
-    setOutput("draft-output", result.draft || result.message || result);
+    const output = getFirstDefinedValue(result, ["draft", "message", "text"]);
+    setOutput("draft-output", output ?? "No draft returned.");
   } catch (error) {
     setOutput("draft-output", `Error: ${error.message}`);
+  } finally {
+    setButtonLoading(button, false, "Draft");
   }
 });
 
-document.querySelector("#image-form").addEventListener("submit", async (event) => {
+document.querySelector("#image-form")?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const formData = new FormData(event.currentTarget);
   const file = formData.get("image");
@@ -118,6 +154,9 @@ document.querySelector("#image-form").addEventListener("submit", async (event) =
     setOutput("image-output", "Please select an image first.");
     return;
   }
+
+  const button = event.currentTarget.querySelector("button[type='submit']");
+  setButtonLoading(button, true, "Translate image");
 
   try {
     const base64 = await new Promise((resolve, reject) => {
@@ -135,13 +174,16 @@ document.querySelector("#image-form").addEventListener("submit", async (event) =
       })
     });
 
-    setOutput("image-output", result.translation || result.summary || result);
+    const output = getFirstDefinedValue(result, ["translation", "summary", "text", "message"]);
+    setOutput("image-output", output ?? "No image translation returned.");
   } catch (error) {
     setOutput("image-output", `Error: ${error.message}`);
+  } finally {
+    setButtonLoading(button, false, "Translate image");
   }
 });
 
-document.querySelector("#ask-form").addEventListener("submit", async (event) => {
+document.querySelector("#ask-form")?.addEventListener("submit", async (event) => {
   event.preventDefault();
   const formData = new FormData(event.currentTarget);
   const payload = {
@@ -149,17 +191,25 @@ document.querySelector("#ask-form").addEventListener("submit", async (event) => 
     myLanguage: formData.get("myLanguage")
   };
 
+  const button = event.currentTarget.querySelector("button[type='submit']");
+  setButtonLoading(button, true, "Ask");
+
   try {
     const result = await fetchJson(`${apiBase}/ask`, {
       method: "POST",
       body: JSON.stringify(payload)
     });
 
-    const answer = result.answer || result;
-    const citations = result.citations ? `\n\nSources:\n${result.citations.join("\n")}` : "";
+    const answer = getFirstDefinedValue(result, ["answer", "response", "message"]) || "No answer returned.";
+    const citations = Array.isArray(result?.citations) && result.citations.length
+      ? `\n\nSources:\n${result.citations.join("\n")}`
+      : "";
+
     setOutput("ask-output", `${answer}${citations}`);
   } catch (error) {
     setOutput("ask-output", `Error: ${error.message}`);
+  } finally {
+    setButtonLoading(button, false, "Ask");
   }
 });
 
