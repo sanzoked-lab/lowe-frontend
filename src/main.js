@@ -1,4 +1,7 @@
 const DEFAULT_API_BASE = "https://lowe-backend-deepseek-api.vercel.app";
+const REQUEST_TIMEOUT_MS = 25000;
+const MAX_IMAGE_DIMENSION = 1200;
+const MAX_IMAGE_QUALITY = 0.78;
 
 const apiBaseInput = document.querySelector("#api-base-url");
 const backendStatus = document.querySelector("#backend-status");
@@ -19,28 +22,44 @@ const setButtonLoading = (button, isLoading, defaultLabel = "Submit") => {
   button.textContent = isLoading ? "Working…" : button.dataset.originalText;
 };
 
+const parseErrorMessage = (error) => {
+  if (error?.name === "AbortError") return "Request timed out. Please try again.";
+  return error?.message || "Something went wrong.";
+};
+
 async function fetchJson(url, options = {}) {
-  const response = await fetch(url, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {})
-    },
-    ...options
-  });
+  const controller = new AbortController();
+  const timeoutMs = options.timeout ?? REQUEST_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  let payload = {};
   try {
-    payload = await response.json();
-  } catch {
-    payload = {};
-  }
+    const response = await fetch(url, {
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {})
+      },
+      signal: controller.signal,
+      ...options
+    });
 
-  if (!response.ok) {
-    const detail = payload?.detail || payload?.error || payload?.message || "Request failed";
-    throw new Error(detail);
-  }
+    let payload = {};
+    try {
+      payload = await response.json();
+    } catch {
+      payload = {};
+    }
 
-  return payload;
+    if (!response.ok) {
+      const detail = payload?.detail || payload?.error || payload?.message || "Request failed";
+      throw new Error(detail);
+    }
+
+    return payload;
+  } catch (error) {
+    throw new Error(parseErrorMessage(error));
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function checkBackend() {
@@ -80,6 +99,47 @@ function setOutput(id, value) {
   el.textContent = formatResult(value);
 }
 
+async function readOptimizedImage(file) {
+  if (!file) return "";
+
+  if (typeof createImageBitmap === "function") {
+    const bitmap = await createImageBitmap(file);
+    const canvas = document.createElement("canvas");
+    const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(bitmap.width, bitmap.height));
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+
+    const context = canvas.getContext("2d");
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close?.();
+
+    return canvas.toDataURL("image/jpeg", MAX_IMAGE_QUALITY).replace(/^data:image\/jpeg;base64,/, "");
+  }
+
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    const img = new Image();
+
+    reader.onload = () => {
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(img.width, img.height));
+        canvas.width = Math.max(1, Math.round(img.width * scale));
+        canvas.height = Math.max(1, Math.round(img.height * scale));
+
+        const context = canvas.getContext("2d");
+        context.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", MAX_IMAGE_QUALITY).replace(/^data:image\/jpeg;base64,/, ""));
+      };
+      img.onerror = () => reject(new Error("Could not process image"));
+      img.src = reader.result;
+    };
+
+    reader.onerror = () => reject(new Error("Could not read image file"));
+    reader.readAsDataURL(file);
+  });
+}
+
 document.querySelector("#api-base-form")?.addEventListener("submit", (event) => {
   event.preventDefault();
   const nextBase = apiBaseInput.value.trim();
@@ -104,17 +164,20 @@ document.querySelector("#translate-form")?.addEventListener("submit", async (eve
   };
 
   const button = event.currentTarget.querySelector("button[type='submit']");
+  if (button?.disabled) return;
   setButtonLoading(button, true, "Translate");
 
   try {
     const result = await fetchJson(`${apiBase}/translate`, {
       method: "POST",
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      timeout: REQUEST_TIMEOUT_MS
     });
+
     const output = getFirstDefinedValue(result, ["translation", "translated", "text", "message"]);
     setOutput("translate-output", output ?? "No translation returned.");
   } catch (error) {
-    setOutput("translate-output", `Error: ${error.message}`);
+    setOutput("translate-output", `Error: ${parseErrorMessage(error)}`);
   } finally {
     setButtonLoading(button, false, "Translate");
   }
@@ -129,17 +192,20 @@ document.querySelector("#draft-form")?.addEventListener("submit", async (event) 
   };
 
   const button = event.currentTarget.querySelector("button[type='submit']");
+  if (button?.disabled) return;
   setButtonLoading(button, true, "Draft");
 
   try {
     const result = await fetchJson(`${apiBase}/draft`, {
       method: "POST",
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      timeout: REQUEST_TIMEOUT_MS
     });
+
     const output = getFirstDefinedValue(result, ["draft", "message", "text"]);
     setOutput("draft-output", output ?? "No draft returned.");
   } catch (error) {
-    setOutput("draft-output", `Error: ${error.message}`);
+    setOutput("draft-output", `Error: ${parseErrorMessage(error)}`);
   } finally {
     setButtonLoading(button, false, "Draft");
   }
@@ -156,28 +222,25 @@ document.querySelector("#image-form")?.addEventListener("submit", async (event) 
   }
 
   const button = event.currentTarget.querySelector("button[type='submit']");
+  if (button?.disabled) return;
   setButtonLoading(button, true, "Translate image");
 
   try {
-    const base64 = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result).replace(/^data:image\/[a-zA-Z0-9.+-]+;base64,/, ""));
-      reader.onerror = () => reject(new Error("Could not read image file"));
-      reader.readAsDataURL(file);
-    });
+    const base64 = await readOptimizedImage(file);
 
     const result = await fetchJson(`${apiBase}/translate-image`, {
       method: "POST",
       body: JSON.stringify({
         imageBase64: base64,
         myLanguage: formData.get("myLanguage")
-      })
+      }),
+      timeout: REQUEST_TIMEOUT_MS
     });
 
     const output = getFirstDefinedValue(result, ["translation", "summary", "text", "message"]);
     setOutput("image-output", output ?? "No image translation returned.");
   } catch (error) {
-    setOutput("image-output", `Error: ${error.message}`);
+    setOutput("image-output", `Error: ${parseErrorMessage(error)}`);
   } finally {
     setButtonLoading(button, false, "Translate image");
   }
@@ -192,12 +255,14 @@ document.querySelector("#ask-form")?.addEventListener("submit", async (event) =>
   };
 
   const button = event.currentTarget.querySelector("button[type='submit']");
+  if (button?.disabled) return;
   setButtonLoading(button, true, "Ask");
 
   try {
     const result = await fetchJson(`${apiBase}/ask`, {
       method: "POST",
-      body: JSON.stringify(payload)
+      body: JSON.stringify(payload),
+      timeout: 30000
     });
 
     const answer = getFirstDefinedValue(result, ["answer", "response", "message"]) || "No answer returned.";
@@ -207,7 +272,7 @@ document.querySelector("#ask-form")?.addEventListener("submit", async (event) =>
 
     setOutput("ask-output", `${answer}${citations}`);
   } catch (error) {
-    setOutput("ask-output", `Error: ${error.message}`);
+    setOutput("ask-output", `Error: ${parseErrorMessage(error)}`);
   } finally {
     setButtonLoading(button, false, "Ask");
   }
