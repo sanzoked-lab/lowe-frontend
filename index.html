@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Lowe Assistant</title>
+    <meta
+      name="description"
+      content="Frontend for the Lowe school information assistant."
+    />
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">School support assistant</p>
+          <h1>Lowe</h1>
+        </div>
+        <div class="status-box">
+          <span class="status-label">Backend</span>
+          <strong id="backend-status">Checking connection…</strong>
+        </div>
+      </header>
+
+      <section class="config-card">
+        <form id="api-base-form" class="api-config">
+          <label for="api-base-url">API base URL</label>
+          <div class="input-row">
+            <input id="api-base-url" type="url" placeholder="https://lowe-backend-deepseek-api.vercel.app" />
+            <button type="submit">Update</button>
+          </div>
+        </form>
+      </section>
+
+      <main class="card-grid">
+        <section class="card">
+          <h2>Translate</h2>
+          <form id="translate-form" class="tool-form">
+            <label>
+              Direction
+              <select name="direction">
+                <option value="toZh">My language → Chinese</option>
+                <option value="fromZh">Chinese → My language</option>
+              </select>
+            </label>
+
+            <label>
+              My language
+              <select name="myLanguage">
+                <option value="English">English</option>
+                <option value="French">French</option>
+                <option value="Spanish">Spanish</option>
+                <option value="Arabic">Arabic</option>
+                <option value="Japanese">Japanese</option>
+                <option value="Korean">Korean</option>
+              </select>
+            </label>
+
+            <label>
+              Text
+              <textarea name="text" rows="5" placeholder="Type or paste text here..." required></textarea>
+            </label>
+
+            <button type="submit">Translate</button>
+          </form>
+          <div class="result">
+            <h3>Output</h3>
+            <pre id="translate-output">Waiting for a translation…</pre>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Draft a message</h2>
+          <form id="draft-form" class="tool-form">
+            <label>
+              My language
+              <select name="myLanguage">
+                <option value="English">English</option>
+                <option value="French">French</option>
+                <option value="Spanish">Spanish</option>
+                <option value="Arabic">Arabic</option>
+                <option value="Japanese">Japanese</option>
+                <option value="Korean">Korean</option>
+              </select>
+            </label>
+
+            <label>
+              Situation
+              <textarea name="text" rows="5" placeholder="Tell the assistant what you need to ask or explain..." required></textarea>
+            </label>
+
+            <button type="submit">Draft</button>
+          </form>
+          <div class="result">
+            <h3>Draft</h3>
+            <pre id="draft-output">Your draft will appear here…</pre>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Translate image</h2>
+          <form id="image-form" class="tool-form">
+            <label>
+              My language
+              <select name="myLanguage">
+                <option value="English">English</option>
+                <option value="French">French</option>
+                <option value="Spanish">Spanish</option>
+                <option value="Arabic">Arabic</option>
+                <option value="Japanese">Japanese</option>
+                <option value="Korean">Korean</option>
+              </select>
+            </label>
+
+            <label>
+              Choose image
+              <input type="file" name="image" accept="image/*" required />
+            </label>
+
+            <button type="submit">Translate image</button>
+          </form>
+          <div class="result">
+            <h3>Image result</h3>
+            <pre id="image-output">No image processed yet…</pre>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Ask Lowe</h2>
+          <form id="ask-form" class="tool-form">
+            <label>
+              My language
+              <select name="myLanguage">
+                <option value="English">English</option>
+                <option value="French">French</option>
+                <option value="Spanish">Spanish</option>
+                <option value="Arabic">Arabic</option>
+                <option value="Japanese">Japanese</option>
+                <option value="Korean">Korean</option>
+              </select>
+            </label>
+
+            <label>
+              Question
+              <textarea name="question" rows="5" placeholder="Ask a school-related question..." required></textarea>
+            </label>
+
+            <button type="submit">Ask</button>
+          </form>
+          <div class="result">
+            <h3>Answer</h3>
+            <pre id="ask-output">No answer yet…</pre>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
